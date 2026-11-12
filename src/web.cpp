@@ -101,13 +101,13 @@ static String radio(const String& name, const String& value, bool checked,
 
 // ================= Hotspot: WLAN-Einrichtung =================
 
-struct Network {
+struct WifiNetwork {
   String ssid;
   int rssi;
   bool secure;
 };
 static const int MAX_NETWORKS = 20;
-static Network networks[MAX_NETWORKS];
+static WifiNetwork networks[MAX_NETWORKS];
 static int networkCount = 0;
 
 void scanNetworks() {
