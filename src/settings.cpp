@@ -29,6 +29,7 @@ void loadSettings() {
 
   cfg.displayMinutes = prefs.getInt("dispMin", DEFAULT_DISPLAY_MINUTES);
   cfg.autoUpdate = prefs.getBool("autoUpd", true);
+  cfg.pin = prefs.getString("pin", "");
   cfg.setupDone = prefs.getBool("setupDone", false);
 }
 
@@ -50,6 +51,7 @@ void saveSettings() {
 
   prefs.putInt("dispMin", cfg.displayMinutes);
   prefs.putBool("autoUpd", cfg.autoUpdate);
+  prefs.putString("pin", cfg.pin);
   prefs.putBool("setupDone", cfg.setupDone);
 
   Serial.printf("Einstellungen: WLAN '%s' | %s (%s) | Filter '%s' | nur Trams %d | Wetter %s | alle %d min\n",

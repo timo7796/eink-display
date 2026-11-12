@@ -13,7 +13,11 @@ ESP32 mit 2,9"-E-Ink-Display (3 Farben). Zeigt:
 2. Mit dem Handy verbinden, WLAN auswählen und Passwort eingeben.
 3. Zurück ins eigene WLAN, `http://eink.local` öffnen und Haltestelle, Richtung und Wetter wählen.
 
-Zurücksetzen geht in der Weboberfläche unter *Einstellungen*.
+Bei der Einrichtung lässt sich eine PIN setzen. Sie schützt Einstellungen,
+Zurücksetzen und Updates – die Notiz bleibt für alle im WLAN offen.
+
+Zurücksetzen geht in der Weboberfläche unter *Einstellungen*. PIN vergessen:
+die **BOOT-Taste 10 Sekunden halten** setzt alles zurück, auch das WLAN.
 
 ## Entwicklung
 

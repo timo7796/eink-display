@@ -27,6 +27,7 @@ struct Settings {
 
   int displayMinutes;
   bool autoUpdate;
+  String pin;         // schuetzt Einstellungen, Reset und Updates - leer = kein Schutz
   bool setupDone;
 };
 extern Settings cfg;

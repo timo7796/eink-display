@@ -34,6 +34,10 @@ static unsigned long lastSignatureCheck = 0;
 static unsigned long lastNoteCheck = 0;
 static String lastSignature = "";
 static unsigned long portalStarted = 0;
+static unsigned long resetPressedSince = 0;
+
+static const int RESET_BUTTON_PIN = 0;   // BOOT-Taste
+static const unsigned long RESET_HOLD_MS = 10000;
 
 void requestRedraw() {
   needsUpdate = true;
@@ -124,11 +128,27 @@ static void startStation() {
   Serial.println(mode == Mode::Setup ? "Webserver laeuft - Einrichtung offen." : "Webserver laeuft.");
 }
 
+/// PIN vergessen? BOOT-Taste 10 s halten setzt alles zurueck.
+static void checkResetButton() {
+  if (digitalRead(RESET_BUTTON_PIN) != LOW) {
+    resetPressedSince = 0;
+    return;
+  }
+  if (resetPressedSince == 0) {
+    resetPressedSince = millis();
+  } else if (millis() - resetPressedSince >= RESET_HOLD_MS) {
+    Serial.println("BOOT-Taste gehalten - Werkseinstellungen");
+    factoryReset();
+    ESP.restart();
+  }
+}
+
 // ================= Setup / Loop =================
 
 void setup() {
   Serial.begin(115200);
   Serial.printf("\nE-Ink Firmware %s\n", FIRMWARE_VERSION);
+  pinMode(RESET_BUTTON_PIN, INPUT_PULLUP);
   initDisplay();
   loadSettings();
   loadNote();
@@ -156,6 +176,7 @@ static void portalLoop() {
 
 void loop() {
   if (restartAt > 0 && millis() > restartAt) ESP.restart();
+  checkResetButton();
 
   if (mode == Mode::Portal) {
     portalLoop();

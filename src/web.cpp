@@ -83,6 +83,39 @@ static bool requirePost() {
   return false;
 }
 
+// ================= PIN-Schutz =================
+
+// Nach richtiger PIN gibt es ein Cookie mit diesem Zufallswert (neu bei jedem Start).
+static String authToken;
+
+static bool isAuthed() {
+  if (cfg.pin.length() == 0) return true;
+  return server.header("Cookie").indexOf("eink_auth=" + authToken) >= 0;
+}
+
+/// Einstellungen, Reset und Updates nur mit PIN (falls gesetzt).
+static bool requireAuth() {
+  if (isAuthed()) return true;
+  redirectTo("/?settings=1&msg=locked");
+  return false;
+}
+
+static void setAuthCookie() {
+  server.sendHeader("Set-Cookie", "eink_auth=" + authToken + "; Path=/; HttpOnly; SameSite=Strict");
+}
+
+/// 4 bis 8 Ziffern.
+static bool validPin(const String& pin) {
+  if (pin.length() < 4 || pin.length() > 8) return false;
+  for (unsigned int i = 0; i < pin.length(); i++) {
+    if (!isdigit((unsigned char)pin[i])) return false;
+  }
+  return true;
+}
+
+static const char PIN_INPUT_ATTRS[] =
+    "type=\"password\" inputmode=\"numeric\" pattern=\"[0-9]{4,8}\" autocomplete=\"off\"";
+
 /// "Schritt 2 von 4" - nur waehrend der Ersteinrichtung.
 static String stepLabel(int step, const char* name) {
   if (cfg.setupDone) return "";
@@ -312,6 +345,12 @@ static void setupStepWeather(String& html) {
     html += radio("choice", "stop", !anyOption, "Am Ort der Haltestelle", htmlEscape(cfg.stopName));
     anyOption = true;
   }
+  if (anyOption && !cfg.setupDone) {
+    html += "<div class=\"field\" style=\"margin-top:14px\"><label for=\"pin\">PIN f\xc3\xbcr die Einstellungen</label>"
+            "<input " + String(PIN_INPUT_ATTRS) + " id=\"pin\" name=\"pin\" placeholder=\"4 bis 8 Ziffern, optional\">"
+            "<p class=\"hint\">Empfohlen: Ohne PIN kann jeder im WLAN die Einstellungen \xc3\xa4ndern oder das "
+            "Display zur\xc3\xbc" "cksetzen. Die Notiz bleibt f\xc3\xbcr alle offen.</p></div>";
+  }
   if (anyOption) {
     html += "<div class=\"row\"><button type=\"submit\">" + String(cfg.setupDone ? "Speichern" : "Fertig") +
             "</button></div>";
@@ -326,6 +365,7 @@ static void setupStepWeather(String& html) {
 }
 
 static void handleSetup() {
+  if (cfg.setupDone && !requireAuth()) return;
   String step = server.arg("step");
   String html = pageStart();
   if (step == "dir") setupStepDirection(html);
@@ -338,6 +378,7 @@ static void handleSetup() {
 
 static void handleSetupStop() {
   if (!requirePost()) return;
+  if (cfg.setupDone && !requireAuth()) return;
   int idx = server.arg("idx").toInt();
   if (idx < 0 || idx >= stopResultCount) {
     redirectTo("/setup?step=stop");
@@ -358,6 +399,7 @@ static void handleSetupStop() {
 
 static void handleSetupDirection() {
   if (!requirePost()) return;
+  if (cfg.setupDone && !requireAuth()) return;
   String custom = server.arg("custom");
   custom.trim();
   cfg.filter = custom.length() > 0 ? custom : server.arg("filter");
@@ -369,6 +411,7 @@ static void handleSetupDirection() {
 
 static void handleSetupWeather() {
   if (!requirePost()) return;
+  if (cfg.setupDone && !requireAuth()) return;
   String choice = server.arg("choice");
   if (choice == "stop") {
     cfg.weatherName = cfg.stopPlace.length() > 0 ? cfg.stopPlace : cfg.stopName;
@@ -386,6 +429,11 @@ static void handleSetupWeather() {
   }
 
   bool firstSetup = !cfg.setupDone;
+  String pin = server.arg("pin");
+  if (firstSetup && validPin(pin)) {
+    cfg.pin = pin;
+    setAuthCookie();   // wer die PIN gerade gesetzt hat, bleibt angemeldet
+  }
   cfg.setupDone = true;
   saveSettings();
   mode = Mode::Normal;
@@ -409,6 +457,8 @@ static void handleRoot() {
   if (msg == "done") html += "<p class=\"msg\">Eingerichtet! Das Display aktualisiert sich gleich.</p>";
   else if (msg == "saved") html += "<p class=\"msg\">Gespeichert. Das Display aktualisiert sich gleich.</p>";
   else if (msg == "ota") html += "<p class=\"msg\">" + htmlEscape(otaStatus) + "</p>";
+  else if (msg == "locked") html += "<p class=\"msg err\">Bitte zuerst mit der PIN entsperren.</p>";
+  else if (msg == "wrongpin") html += "<p class=\"msg err\">Falsche PIN.</p>";
   if (isBusy) html += "<p class=\"msg\">Das Display zeichnet gerade neu.</p>";
 
   // ===== Notiz =====
@@ -447,7 +497,20 @@ static void handleRoot() {
   if (cfg.onlyTrams) direction += ", nur Trams";
 
   html += "<details class=\"card\"" + String(server.hasArg("settings") ? " open" : "") + ">"
-          "<summary>Einstellungen</summary><div class=\"kv\">";
+          "<summary>Einstellungen</summary>";
+
+  if (!isAuthed()) {
+    html += "<form method=\"post\" action=\"/login\">"
+            "<div class=\"field\"><label for=\"pin\">PIN</label>"
+            "<input " + String(PIN_INPUT_ATTRS) + " id=\"pin\" name=\"pin\" required></div>"
+            "<div class=\"row\"><button type=\"submit\">Entsperren</button></div></form>"
+            "<p class=\"hint\">PIN vergessen? Die BOOT-Taste am Display 10 Sekunden gedr\xc3\xbc" "ckt halten "
+            "\xe2\x80\x93 das setzt alles zur\xc3\xbc" "ck, auch das WLAN.</p></details>";
+    sendPage(html);
+    return;
+  }
+
+  html += "<div class=\"kv\">";
   html += "<div><span>Haltestelle</span><span>" + htmlEscape(cfg.stopName) +
           " <a href=\"/setup?step=stop\">\xc3\xa4ndern</a></span></div>";
   html += "<div><span>Richtung</span><span>" + direction + " <a href=\"/setup?step=dir\">\xc3\xa4ndern</a></span></div>";
@@ -462,6 +525,12 @@ static void handleRoot() {
           String(cfg.displayMinutes) + "\"></div>"
           "<label class=\"check\"><input type=\"checkbox\" name=\"autoUpdate\" value=\"1\"" +
           String(cfg.autoUpdate ? " checked" : "") + "> Updates automatisch installieren</label>"
+          "<div class=\"field\" style=\"margin-top:14px\"><label for=\"newpin\">PIN f\xc3\xbcr die Einstellungen</label>"
+          "<input " + String(PIN_INPUT_ATTRS) + " id=\"newpin\" name=\"newpin\" placeholder=\"" +
+          String(cfg.pin.length() > 0 ? "leer lassen = unver\xc3\xa4ndert" : "keine \xe2\x80\x93 4 bis 8 Ziffern") + "\"></div>" +
+          String(cfg.pin.length() > 0
+                     ? "<label class=\"check\"><input type=\"checkbox\" name=\"removePin\" value=\"1\"> PIN entfernen</label>"
+                     : "") +
           "<div class=\"row\"><button type=\"submit\">Speichern</button></div></form>";
 
   // Firmware
@@ -499,16 +568,36 @@ static void handleNote() {
   redirectTo("/?msg=saved");
 }
 
+static void handleLogin() {
+  if (!requirePost()) return;
+  if (cfg.pin.length() > 0 && server.arg("pin") == cfg.pin) {
+    setAuthCookie();
+    redirectTo("/?settings=1");
+    return;
+  }
+  delay(2000);   // Durchprobieren bremsen
+  redirectTo("/?settings=1&msg=wrongpin");
+}
+
 static void handleSettings() {
   if (!requirePost()) return;
+  if (!requireAuth()) return;
   cfg.displayMinutes = constrain(server.arg("dispMin").toInt(), 1, 30);
   cfg.autoUpdate = server.hasArg("autoUpdate");
+  String newPin = server.arg("newpin");
+  if (server.hasArg("removePin")) {
+    cfg.pin = "";
+  } else if (validPin(newPin)) {
+    cfg.pin = newPin;
+    setAuthCookie();
+  }
   saveSettings();
   redirectTo("/?msg=saved&settings=1");
 }
 
 static void handleReset() {
   if (!requirePost()) return;
+  if (!requireAuth()) return;
   String what = server.arg("what");
   if (what == "all") {
     factoryReset();
@@ -527,6 +616,7 @@ static void handleReset() {
 
 static void handleOtaCheck() {
   if (!requirePost()) return;
+  if (!requireAuth()) return;
   String url;
   if (otaCheck(url) != 1) {
     redirectTo("/?msg=ota&settings=1");
@@ -541,7 +631,13 @@ static void handleOtaCheck() {
 }
 
 /// Firmware-Upload aus dem Browser (lokal, ohne Update-Server).
+static bool uploadAllowed = false;
+
 static void handleUploadDone() {
+  if (!uploadAllowed) {
+    redirectTo("/?settings=1&msg=locked");
+    return;
+  }
   bool ok = !Update.hasError();
   String html = pageStart();
   if (ok) {
@@ -557,8 +653,12 @@ static void handleUploadDone() {
 static void handleUploadData() {
   HTTPUpload& upload = server.upload();
   if (upload.status == UPLOAD_FILE_START) {
+    uploadAllowed = isAuthed();
+    if (!uploadAllowed) return;
     Serial.printf("Firmware-Upload: %s\n", upload.filename.c_str());
     Update.begin(UPDATE_SIZE_UNKNOWN);
+  } else if (!uploadAllowed) {
+    return;
   } else if (upload.status == UPLOAD_FILE_WRITE) {
     Update.write(upload.buf, upload.currentSize);
   } else if (upload.status == UPLOAD_FILE_END) {
@@ -623,7 +723,12 @@ static void handleStatus() {
 }
 
 void setupNormalRoutes() {
+  authToken = String(esp_random(), HEX) + String(esp_random(), HEX);
+  static const char* headerKeys[] = {"Cookie"};
+  server.collectHeaders(headerKeys, 1);
+
   server.on("/", HTTP_GET, handleRoot);
+  server.on("/login", handleLogin);
   server.on("/setup", HTTP_GET, handleSetup);
   server.on("/setup/stop", handleSetupStop);
   server.on("/setup/dir", handleSetupDirection);
