@@ -12,7 +12,13 @@
 /// URL zur version.json fuer automatische Updates, leer = aus.
 /// Beispiel GitHub: "https://github.com/<user>/<repo>/releases/latest/download/version.json"
 /// Inhalt: {"version": "1.1.1", "url": "https://.../firmware.bin"}
-#define OTA_MANIFEST_URL "https://github.com/timo7796/eink-display/releases/latest/download/version.json"
+#define OTA_BASE_URL "https://github.com/timo7796/eink-display/releases/latest/download/"
+// Jede Chip-Variante hat ihre eigene Firmware-Datei
+#if CONFIG_IDF_TARGET_ESP32S3
+#define OTA_MANIFEST_URL OTA_BASE_URL "version-s3.json"
+#else
+#define OTA_MANIFEST_URL OTA_BASE_URL "version.json"
+#endif
 #define OTA_CHECK_INTERVAL_MS (6UL * 60 * 60 * 1000)   // alle 6 Stunden
 
 // ===== Geraet =====
