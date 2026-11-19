@@ -4,15 +4,31 @@
 #include <U8g2_for_Adafruit_GFX.h>
 #include "app.h"
 
+#if CONFIG_IDF_TARGET_ESP32S3
+// S3: alles nebeneinander auf der linken Leiste (GPIO 9-14), GND direkt darunter
+#define EPD_BUSY 9
+#define EPD_RST  10
+#define EPD_DC   11
+#define EPD_CS   12
+#define EPD_CLK  13
+#define EPD_DIN  14
+#else
+// Normaler ESP32: Standard-SPI (CLK 18, DIN 23)
 #define EPD_CS   5
 #define EPD_DC   17
 #define EPD_RST  16
 #define EPD_BUSY 4
+#endif
 
 static GxEPD2_3C<GxEPD2_290_C90c, GxEPD2_290_C90c::HEIGHT> display(GxEPD2_290_C90c(EPD_CS, EPD_DC, EPD_RST, EPD_BUSY));
 static U8G2_FOR_ADAFRUIT_GFX u8g2;
 
 void initDisplay() {
+#if CONFIG_IDF_TARGET_ESP32S3
+  // Eigene SPI-Pins. MISO wird nicht angeschlossen, muss aber gesetzt sein -
+  // mit -1 sendet die SPI des S3 (Core 2.0.17) gar nichts.
+  SPI.begin(EPD_CLK, 47, EPD_DIN, -1);
+#endif
   display.init(115200);
 }
 
