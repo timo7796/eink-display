@@ -192,6 +192,7 @@ void loop() {
       lastWeatherFetch = ok ? millis() : millis() - WEATHER_INTERVAL_MS + 60000;
       weatherFetchedOnce = true;
     }
+    efaDailyCheck();
     if (!tramFetchedOnce || millis() - lastTramFetch >= TRAM_INTERVAL_MS) {
       tramError = !fetchTrams();
       if (!tramError) tramStand = formatTime(time(nullptr));

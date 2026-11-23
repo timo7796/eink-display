@@ -316,7 +316,7 @@ static void setupStepDirection(String& html) {
           "<input type=\"text\" id=\"custom\" name=\"custom\" placeholder=\"z.B. Hauptbahnhof\" value=\"" +
           (matched ? String("") : htmlEscape(cfg.filter)) + "\"></div>";
   html += "<label class=\"check\"><input type=\"checkbox\" name=\"onlyTrams\" value=\"1\"" +
-          String(cfg.onlyTrams ? " checked" : "") + "> Nur Stra\xc3\x9f" "enbahnen (Busse ausblenden)</label>";
+          String(cfg.onlyTrams ? " checked" : "") + "> Nur Bahnen (Busse ausblenden)</label>";
   html += "<p class=\"hint\">Die Liste zeigt die Linien der n\xc3\xa4" "chsten Abfahrten. Nachts oder am Wochenende "
           "fehlen evtl. Linien, die sonst fahren.</p>";
   html += "<div class=\"row\"><button type=\"submit\">" + String(cfg.setupDone ? "Speichern" : "Weiter") +
@@ -391,6 +391,7 @@ static void handleSetupStop() {
   cfg.stopLat = s.lat;
   cfg.stopLon = s.lon;
   cfg.filter = "";   // Steige gehoeren zur alten Haltestelle
+  chooseEfaServer();  // Server mit Echtzeit fuer diese Haltestelle suchen (speichert selbst)
   saveSettings();
   departureCount = 0;
   requestDataFetch();
@@ -494,7 +495,7 @@ static void handleRoot() {
 
   // ===== Einstellungen =====
   String direction = cfg.filter.length() > 0 ? htmlEscape(cfg.filter) : String("alle");
-  if (cfg.onlyTrams) direction += ", nur Trams";
+  if (cfg.onlyTrams) direction += ", ohne Busse";
 
   html += "<details class=\"card\"" + String(server.hasArg("settings") ? " open" : "") + ">"
           "<summary>Einstellungen</summary>";
@@ -516,6 +517,8 @@ static void handleRoot() {
   html += "<div><span>Richtung</span><span>" + direction + " <a href=\"/setup?step=dir\">\xc3\xa4ndern</a></span></div>";
   html += "<div><span>Wetter</span><span>" + htmlEscape(cfg.weatherName) +
           " <a href=\"/setup?step=weather\">\xc3\xa4ndern</a></span></div>";
+  html += "<div><span>Datenquelle</span><span>" + String(EFA_SERVER_NAMES[cfg.efaServer]) +
+          " (automatisch)</span></div>";
   html += "<div><span>WLAN</span><span>" + htmlEscape(cfg.wifiSsid) + "</span></div>";
   html += "</div>";
 

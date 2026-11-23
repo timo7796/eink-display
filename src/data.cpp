@@ -138,21 +138,19 @@ static void addRoute(const String& platform, const String& line, const String& d
   routes[routeCount++] = {platform, line, dest};
 }
 
-bool fetchTrams() {
-  if (cfg.stopId.length() == 0) {
-    tramErrorText = "Keine Haltestelle eingerichtet";
-    return false;
-  }
-
+/// Abfahrten der Haltestelle von einem EFA-Server laden.
+/// Rueckgabe: Anzahl Abfahrten, -1 = Fehler (Text in err).
+static int loadDepartures(int server, JsonDocument& doc, String& err) {
   WiFiClientSecure client;
   client.setInsecure();
   HTTPClient http;
   http.useHTTP10(true);
   http.setTimeout(15000);
 
-  if (!http.begin(client, EFA_BASE "XML_DM_REQUEST")) {
-    tramErrorText = "Verbindung fehlgeschlagen";
-    return false;
+  String url = String(EFA_SERVERS[server]) + "XML_DM_REQUEST";
+  if (!http.begin(client, url)) {
+    err = "Verbindung fehlgeschlagen";
+    return -1;
   }
   http.addHeader("Content-Type", "application/x-www-form-urlencoded");
 
@@ -163,10 +161,10 @@ bool fetchTrams() {
 
   int code = http.POST(body);
   if (code != 200) {
-    Serial.printf("Tram: HTTP %d\n", code);
-    tramErrorText = "HTTP " + String(code);
+    Serial.printf("EFA %s: HTTP %d\n", EFA_SERVER_NAMES[server], code);
+    err = "HTTP " + String(code);
     http.end();
-    return false;
+    return -1;
   }
 
   // Die Antwort ist ~40 KB gross - nur die benoetigten Felder behalten
@@ -179,23 +177,81 @@ bool fetchTrams() {
   f["dateTime"] = true;
   f["realDateTime"] = true;
 
-  JsonDocument doc;
-  DeserializationError err = deserializeJson(doc, http.getStream(), DeserializationOption::Filter(filter));
+  DeserializationError jerr = deserializeJson(doc, http.getStream(), DeserializationOption::Filter(filter));
   http.end();
-  if (err) {
-    Serial.printf("Tram: JSON-Fehler %s\n", err.c_str());
-    tramErrorText = "Antwort nicht lesbar";
+  if (jerr) {
+    Serial.printf("EFA %s: JSON-Fehler %s\n", EFA_SERVER_NAMES[server], jerr.c_str());
+    err = "Antwort nicht lesbar";
+    return -1;
+  }
+  return doc["departureList"].as<JsonArrayConst>().size();
+}
+
+void chooseEfaServer() {
+  if (cfg.stopId.length() == 0) return;
+  int best = -1, bestRealtime = -1, bestCount = 0;
+  // Mit dem aktuellen Server anfangen - bei Gleichstand bleibt er
+  for (int k = 0; k < EFA_SERVER_COUNT; k++) {
+    int i = (cfg.efaServer + k) % EFA_SERVER_COUNT;
+    JsonDocument doc;
+    String err;
+    int n = loadDepartures(i, doc, err);
+    int realtime = 0;
+    for (JsonVariantConst dep : doc["departureList"].as<JsonArrayConst>()) {
+      if (!dep["realDateTime"].isNull()) realtime++;
+    }
+    Serial.printf("EFA %s: %d Abfahrten, %d mit Echtzeit\n", EFA_SERVER_NAMES[i], n, realtime);
+    if (n <= 0) continue;
+    if (realtime > bestRealtime || (realtime == bestRealtime && n > bestCount)) {
+      best = i;
+      bestRealtime = realtime;
+      bestCount = n;
+    }
+  }
+  if (best < 0) return;   // keiner erreichbar - bisherige Wahl behalten
+  if (best != cfg.efaServer) {
+    Serial.printf("Datenquelle gewechselt: %s\n", EFA_SERVER_NAMES[best]);
+    cfg.efaServer = best;
+    saveSettings();
+    requestDataFetch();
+  }
+}
+
+void efaDailyCheck() {
+  if (!timeValid() || cfg.stopId.length() == 0) return;
+  if (cfg.efaCheckDay == todayKey()) return;
+  // Tagsueber, damit Bahnen fahren und Echtzeit da ist
+  time_t now = time(nullptr);
+  struct tm tm;
+  localtime_r(&now, &tm);
+  if (tm.tm_hour < 10 || tm.tm_hour >= 18) return;
+  cfg.efaCheckDay = todayKey();
+  saveSettings();
+  chooseEfaServer();
+}
+
+bool fetchTrams() {
+  if (cfg.stopId.length() == 0) {
+    tramErrorText = "Keine Haltestelle eingerichtet";
+    return false;
+  }
+
+  JsonDocument doc;
+  String err;
+  int total = loadDepartures(cfg.efaServer, doc, err);
+  if (total < 0) {
+    tramErrorText = err;
     return false;
   }
 
   JsonArrayConst list = doc["departureList"];
-  if (list.isNull() || list.size() == 0) {
+  if (total == 0) {
     Serial.println("Tram: keine Abfahrten");
     tramErrorText = "Keine Abfahrten gefunden";
     return false;
   }
 
-  Serial.printf("--- EFA %s: %d Abfahrten ---\n", cfg.stopName.c_str(), list.size());
+  Serial.printf("--- EFA %s, %s: %d Abfahrten ---\n", EFA_SERVER_NAMES[cfg.efaServer], cfg.stopName.c_str(), total);
   String filterText = cfg.filter;
   filterText.trim();
   routeCount = 0;
@@ -214,7 +270,8 @@ bool fetchTrams() {
                   line.c_str(), dest.c_str(), platform.c_str(), motType, formatTime(when).c_str());
     addRoute(platform, line, shortenDest(dest));
 
-    if (cfg.onlyTrams && motType != 4) continue;   // 4 = Strassenbahn, 5 = Bus
+    // 0 = Zug, 1 = S-Bahn, 2 = U-Bahn, 3 = Stadtbahn, 4 = Strassenbahn, ab 5 = Busse/Rufbus
+    if (cfg.onlyTrams && motType >= 5) continue;
     if (filterText.length() > 0 &&
         !containsIgnoreCase(dest, filterText) && !containsIgnoreCase(platform, filterText)) continue;
     if (count >= MAX_DEPARTURES) continue;
@@ -253,7 +310,7 @@ int visibleTramRows() {
 
 /// Haltestellen per Freitext, z.B. "Augsburg Berliner Allee".
 int searchStops(const String& query, StopResult out[], int maxResults) {
-  String url = EFA_BASE "XML_STOPFINDER_REQUEST?outputFormat=JSON&language=de&type_sf=any"
+  String url = String(EFA_SERVERS[0]) + "XML_STOPFINDER_REQUEST?outputFormat=JSON&language=de&type_sf=any"
                "&anyObjFilter_sf=2&coordOutputFormat=WGS84%5BDD.ddddd%5D&name_sf=" + urlEncode(query);
 
   JsonDocument filter;

@@ -20,6 +20,8 @@ struct Settings {
   String stopLon;
   String filter;      // Steig oder Ziel, leer = alle
   bool onlyTrams;
+  int efaServer;        // Index in EFA_SERVERS, automatisch gewaehlt
+  String efaCheckDay;   // Tag der letzten automatischen Serverwahl
 
   String weatherName;
   String weatherLat;
@@ -117,6 +119,8 @@ bool containsIgnoreCase(String haystack, String needle);
 
 bool fetchWeather();
 bool fetchTrams();
+void chooseEfaServer();   // beide Server testen, den mit Echtzeit nehmen
+void efaDailyCheck();     // einmal am Tag tagsueber neu waehlen
 
 struct StopResult {
   String id;

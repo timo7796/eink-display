@@ -22,6 +22,9 @@ void loadSettings() {
   cfg.stopLon = prefs.getString("stopLon", "");
   cfg.filter = prefs.getString("filter", "");
   cfg.onlyTrams = prefs.getBool("onlyTrams", false);
+  cfg.efaServer = prefs.getInt("efaSrv", 0);
+  if (cfg.efaServer < 0 || cfg.efaServer >= EFA_SERVER_COUNT) cfg.efaServer = 0;
+  cfg.efaCheckDay = prefs.getString("efaChk", "");
 
   cfg.weatherName = prefs.getString("wName", "");
   cfg.weatherLat = prefs.getString("wLat", "");
@@ -44,6 +47,8 @@ void saveSettings() {
   prefs.putString("stopLon", cfg.stopLon);
   prefs.putString("filter", cfg.filter);
   prefs.putBool("onlyTrams", cfg.onlyTrams);
+  prefs.putInt("efaSrv", cfg.efaServer);
+  prefs.putString("efaChk", cfg.efaCheckDay);
 
   prefs.putString("wName", cfg.weatherName);
   prefs.putString("wLat", cfg.weatherLat);

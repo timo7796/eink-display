@@ -7,7 +7,7 @@
 
 // ===== Firmware / OTA =====
 /// Bei jedem Release hochzaehlen - Geraete installieren nur neuere Versionen.
-#define FIRMWARE_VERSION "1.1.0"
+#define FIRMWARE_VERSION "1.2.0"
 
 /// URL zur version.json fuer automatische Updates, leer = aus.
 /// Beispiel GitHub: "https://github.com/<user>/<repo>/releases/latest/download/version.json"
@@ -37,8 +37,16 @@
 #define RAIN_PROB_PERCENT 50
 #define RAIN_MM           0.3f
 
-// ===== Abfahrten (EFA / Bayern Fahrplan, deckt ganz Deutschland ab) =====
-#define EFA_BASE "https://mobile.defas-fgi.de/beg/"
+// ===== Abfahrten (EFA) =====
+// Beide Server kennen alle Haltestellen mit denselben IDs, Echtzeit gibt es aber nur
+// regional. Das Geraet waehlt je Haltestelle automatisch den Server mit Echtzeit.
+// Index 0 ist Standard und wird auch fuer die Haltestellensuche benutzt.
+#define EFA_SERVER_COUNT 2
+static const char* const EFA_SERVERS[EFA_SERVER_COUNT] = {
+  "https://mobile.defas-fgi.de/beg/",   // Bayern Fahrplan (BEG)
+  "https://efa.vrr.de/standard/",       // Verkehrsverbund Rhein-Ruhr
+};
+static const char* const EFA_SERVER_NAMES[EFA_SERVER_COUNT] = {"Bayern (BEG)", "VRR"};
 
 // ===== Intervalle =====
 #define TRAM_INTERVAL_MS        (60UL * 1000)        // Abfahrten neu laden
